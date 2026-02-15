@@ -113,14 +113,14 @@ if "df" in st.session_state:
         (df["arr_time"] >= arr_start) &
         (df["arr_time"] <= arr_end)
     ].copy()
-    filtered = filtered.drop(columns=["dep_time", "arr_time"])
+
     filtered["is_cheapest"] = filtered.groupby("origin")["price"].transform(
     lambda x: x == x.min())
     
     filtered = filtered[[
         "origin", "City", "Country",
         "airline", "AirlineName",
-        "price", "Duration",
+        "price","dep_time", "arr_time", "Duration",
         "is_cheapest"]]
 
 
