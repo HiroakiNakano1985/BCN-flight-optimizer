@@ -44,10 +44,19 @@ arr_start, arr_end = st.slider(
 
 if st.button("Search"):
     gif_placeholder = st.empty()
-    gif_placeholder.image("data/YVPG.gif", width=120)
-    st.write("Searching flights...")
+    gif_placeholder.markdown(
+        """
+        <div style='text-align:center;'>
+            <img src='data/YVPG.gif' width='120'>
+            <p>Searching flights...</p>
+        </div>
+        """,
+        unsafe_allow_html=True)
+
     results = search_multiple_origins(origins, "BCN", str(date))
+
     gif_placeholder.empty()
+
 
     rows = []
     for r in results:
