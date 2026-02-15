@@ -77,7 +77,10 @@ if st.button("Search"):
         offers = r["data"]["data"]
 
         for offer in offers:
-            seg = offer["itineraries"][0]["segments"][0]
+            segments = offer["itineraries"][0]["segments"]
+            if len(segments) !=1:
+                continue
+            seg = segments[0]
             rows.append({
                 "origin": origin,
                 "price": float(offer["price"]["grandTotal"]),
