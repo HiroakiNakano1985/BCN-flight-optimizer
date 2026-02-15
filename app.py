@@ -2,6 +2,7 @@ import streamlit as st
 from flight_api import search_multiple_origins
 import pandas as pd
 from datetime import time
+from config import origins, origin_info, airline_names
 
 st.title("Barcelona Flight Optimizer")
 
@@ -25,16 +26,12 @@ arr_start, arr_end = st.slider(
 )
 
 
-origins = [
-    "LIS", "CMN", "TUN", "CDG", "LON", "ZRH", "BRU", "AMS",
-    "BER", "PRG", "WAW", "VIE", "LJU", "FCO", "BUD", "ZAG",
-    "OTP", "SOF", "ATH", "IST", "NCE", "MAD"
-]
-
 if st.button("Search"):
-    with st.spinner("Searching flights..."):
-        st.image("data/YVPG.gif", width=120)
-        results = search_multiple_origins(origins, "BCN", str(date))
+    gif_placeholder = st.empty()
+    gif_placeholder.image("data/YVPG.gif", width=120)
+    st.write("Searching flights...")
+    results = search_multiple_origins(origins, "BCN", str(date))
+    gif_placeholder.empty()
 
     rows = []
     for r in results:
