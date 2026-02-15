@@ -101,7 +101,7 @@ if "df" in st.session_state:
     df["AirlineName"] = df["airline"].apply(lambda x: airline_names.get(x, "Unknown"))
     df["Duration"] = df["duration"].apply(format_duration)
 
-    df = df.drop(columns=["departure", "arrival"])
+    
 
     
     df["dep_time"] = pd.to_datetime(df["departure"]).dt.time
@@ -112,17 +112,22 @@ if "df" in st.session_state:
         (df["dep_time"] <= dep_end) &
         (df["arr_time"] >= arr_start) &
         (df["arr_time"] <= arr_end)
-    ]
-
+    ].copy()
+    filtered = filtered.drop(columns=["dep_time", "arr_time"])
     filtered["is_cheapest"] = filtered.groupby("origin")["price"].transform(
     lambda x: x == x.min())
-    st.dataframe(filtered.style.apply(highlight_cheapest, axis=1))
+    
+    filtered = filtered[[
+        "origin", "City", "Country",
+        "airline", "AirlineName",
+        "price", "Duration",
+        "is_cheapest"]]
+
 
 
     st.subheader("Filtered Results")
-    st.dataframe(filtered)
+    st.dataframe(filtered.style.apply(highlight_cheapest, axis=1))
 
-    
     cheapest = filtered[filtered["price"].notnull()]
     if len(cheapest) > 0:
         best = cheapest.sort_values("price").iloc[0]
