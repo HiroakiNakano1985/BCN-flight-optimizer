@@ -7,9 +7,9 @@ st.title("Barcelona Flight Optimizer")
 
 st.subheader("UC1: Search flights arriving in Barcelona")
 
+# date
 date = st.date_input("Arrival date")
 
-# departure time
 dep_start, dep_end = st.slider(
     "Departure time range",
     min_value=time(0, 0),
@@ -17,7 +17,6 @@ dep_start, dep_end = st.slider(
     value=(time(0, 0), time(23, 59))
 )
 
-# arrival time
 arr_start, arr_end = st.slider(
     "Arrival time range",
     min_value=time(0, 0),
@@ -25,16 +24,17 @@ arr_start, arr_end = st.slider(
     value=(time(0, 0), time(23, 59))
 )
 
+
+origins = [
+    "LIS", "CMN", "TUN", "CDG", "LON", "ZRH", "BRU", "AMS",
+    "BER", "PRG", "WAW", "VIE", "LJU", "FCO", "BUD", "ZAG",
+    "OTP", "SOF", "ATH", "IST", "NCE", "MAD"
+]
+
 if st.button("Search"):
-    st.write("Searching flights for:", date)
-
-    origins = [
-        "LIS", "CMN", "TUN", "CDG", "LON", "ZRH", "BRU", "AMS",
-        "BER", "PRG", "WAW", "VIE", "LJU", "FCO", "BUD", "ZAG",
-        "OTP", "SOF", "ATH", "IST", "NCE", "MAD"
-    ]
-
-    results = search_multiple_origins(origins, "BCN", str(date))
+    with st.spinner("Searching flights..."):
+        st.image("data/YVPG.gif", width=120)
+        results = search_multiple_origins(origins, "BCN", str(date))
 
     rows = []
     for r in results:
@@ -54,49 +54,44 @@ if st.button("Search"):
 
         offers = r["data"]["data"]
 
-        #time filter
-        filtered = []
         for offer in offers:
             seg = offer["itineraries"][0]["segments"][0]
-            dep_time = pd.to_datetime(seg["departure"]["at"]).time()
-            arr_time = pd.to_datetime(seg["arrival"]["at"]).time()
-
-            if dep_start <= dep_time <= dep_end and arr_start <= arr_time <= arr_end:
-                filtered.append(offer)
-
-        if len(filtered) == 0:
             rows.append({
                 "origin": origin,
-                "price": None,
-                "airline": None,
-                "duration": None,
-                "departure": None,
-                "arrival": None,
-                "error": "No flights in selected time range"
+                "price": float(offer["price"]["grandTotal"]),
+                "airline": offer["validatingAirlineCodes"][0],
+                "duration": offer["itineraries"][0]["duration"],
+                "departure": seg["departure"]["at"],
+                "arrival": seg["arrival"]["at"],
+                "error": None
             })
-            continue
 
-        
-        cheapest = min(filtered, key=lambda x: float(x["price"]["grandTotal"]))
+    
+    st.session_state["df"] = pd.DataFrame(rows)
+    st.success("Search completed!")
 
-        rows.append({
-            "origin": origin,
-            "price": float(cheapest["price"]["grandTotal"]),
-            "airline": cheapest["validatingAirlineCodes"][0],
-            "duration": cheapest["itineraries"][0]["duration"],
-            "departure": cheapest["itineraries"][0]["segments"][0]["departure"]["at"],
-            "arrival": cheapest["itineraries"][0]["segments"][0]["arrival"]["at"],
-            "error": None
-        })
 
-    df = pd.DataFrame(rows)
+if "df" in st.session_state:
+    df = st.session_state["df"].copy()
 
-    st.subheader("Results")
-    st.dataframe(df)
+    
+    df["dep_time"] = pd.to_datetime(df["departure"]).dt.time
+    df["arr_time"] = pd.to_datetime(df["arrival"]).dt.time
 
-    cheapest_rows = df[df["price"].notnull()]
-    if len(cheapest_rows) > 0:
-        best = cheapest_rows.sort_values("price").iloc[0]
+    filtered = df[
+        (df["dep_time"] >= dep_start) &
+        (df["dep_time"] <= dep_end) &
+        (df["arr_time"] >= arr_start) &
+        (df["arr_time"] <= arr_end)
+    ]
+
+    st.subheader("Filtered Results")
+    st.dataframe(filtered)
+
+    
+    cheapest = filtered[filtered["price"].notnull()]
+    if len(cheapest) > 0:
+        best = cheapest.sort_values("price").iloc[0]
         st.success(
             f"Cheapest flight is from **{best['origin']}** → BCN at **€{best['price']}**"
         )
