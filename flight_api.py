@@ -2,8 +2,7 @@ import os
 import requests
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor
-from flight_api import search_flights
-
+import time
 
 load_dotenv()
 
@@ -43,7 +42,7 @@ def search_flights(origin, destination, date):
         "destinationLocationCode": destination,
         "departureDate": date,
         "adults": 1,
-        "max": 20
+        "max": 15
     }
 
     response = requests.get(SEARCH_URL, headers=headers, params=params)
@@ -60,14 +59,21 @@ def search_flights(origin, destination, date):
 
     return response.json()
 
-def search_multiple_origins(origins, destination, date, max_workers=5):
-    
+def search_multiple_origins(origins, destination, date, max_workers=1):
+
     def fetch(origin):
-        try:
-            data = search_flights(origin, destination, date)
-            return {"origin": origin, "data": data}
-        except Exception as e:
-            return {"origin": origin, "error": str(e)}
+        for attempt in range(3):  # max try 3 times
+            try:
+                time.sleep(1.2)  # to avoid "too many requests"
+                data = search_flights(origin, destination, date)
+                return {"origin": origin, "data": data}
+            except Exception as e:
+                if "429" in str(e):
+                    # in case of 429, take longer to avoid error
+                    time.sleep(2)
+                    continue
+                return {"origin": origin, "error": str(e)}
+        return {"origin": origin, "error": "Failed after retries"}
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         results = list(executor.map(fetch, origins))
