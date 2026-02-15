@@ -46,8 +46,18 @@ airline_names = {
     "X3": "TUI fly Germany",
     "D8": "Norwegian Air Shuttle",
     "DY": "Norwegian Air International",
+    "3O": "Air Arabia Maroc",
+    "AT": "Royal Air Maroc",
+    "TU": "Tunisair",
+    "SN": "Brussels Airlines",
+    "QS": "SmartWings",
+    "OU": "Croatia Airlines",
+    "V7": "Volotea",
+    "A3": "Aegean Airlines",
+    "UX": "Air Europa",
 
-    # Legacy carriers (still important for BCN)
+
+    # Legacy carriers
     "IB": "Iberia",
     "LH": "Lufthansa",
     "AF": "Air France",
