@@ -43,20 +43,8 @@ arr_start, arr_end = st.slider(
 
 
 if st.button("Search"):
-    gif_placeholder = st.empty()
-    gif_placeholder.markdown(
-        """
-        <div style='text-align:center;'>
-            <img src='data/YVPG.gif' width='120'>
-            <p>Searching flights...</p>
-        </div>
-        """,
-        unsafe_allow_html=True)
-
+    status = st.info("Searching flights...")
     results = search_multiple_origins(origins, "BCN", str(date))
-
-    gif_placeholder.empty()
-
 
     rows = []
     for r in results:
@@ -93,6 +81,7 @@ if st.button("Search"):
 
     
     st.session_state["df"] = pd.DataFrame(rows)
+    status.empty()
     st.success("Search completed!")
 
 
@@ -134,6 +123,22 @@ if "df" in st.session_state:
     cheapest = filtered[filtered["price"].notnull()]
     if len(cheapest) > 0:
         best = cheapest.sort_values("price").iloc[0]
-        st.success(
-            f"Cheapest flight is from **{best['origin']}** → BCN at **€{best['price']}**"
-        )
+        st.success(f"Cheapest flight is from **{best['origin']}** → BCN at **€{best['price']}**")
+    
+    cheapest_by_city = (filtered.groupby(["origin", "City", "Country"])["price"]
+                .min().reset_index().sort_values("price")
+                .head(10).set_index("City"))
+
+    st.subheader("Cheapest Price by City (Top 10 Cheapest)")
+    st.bar_chart(cheapest_by_city["price"])
+
+
+    avg_price = (filtered.groupby(["origin", "City", "Country"])["price"]
+                 .mean().reset_index()
+                 .sort_values("price").head(10)
+                 .set_index("City"))
+    
+    
+    st.subheader("Average Price by City (Top 10 Cheapest)")
+    st.bar_chart(avg_price["price"])
+
