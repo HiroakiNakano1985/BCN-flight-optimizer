@@ -1,5 +1,5 @@
 import streamlit as st
-from flight_api import search_multiple_origins
+from flight_api import search_multiple_origins2
 import pandas as pd
 from datetime import time
 from config import origins, origin_info, airline_names
@@ -20,6 +20,41 @@ def highlight_cheapest(row):
         return ["background-color: #d1ffd1"] * len(row)
     return [""] * len(row)
 
+st.set_page_config(
+    page_title="Barcelona Flight Optimizer",
+    page_icon="✈️",
+    layout="wide"
+)
+
+st.markdown("""
+<style>
+
+html, body, [data-testid="stAppViewContainer"] {
+    background-color: #f5f7fa !important;
+}
+
+/* title */
+h1 {
+    color: #1a3c8b !important;
+    font-weight: 700 !important;
+}
+
+/* subtitle */
+h2, h3 {
+    color: #2b4c9a !important;
+}
+
+/* button */
+.stButton>button {
+    background-color: #1a73e8 !important;
+    color: white !important;
+    border-radius: 8px !important;
+    padding: 0.6rem 1.2rem !important;
+    font-size: 1.1rem !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
 
 st.title("Barcelona Flight Optimizer")
 st.subheader("UC1: Search flights arriving in Barcelona")
@@ -44,7 +79,7 @@ arr_start, arr_end = st.slider(
 
 if st.button("Search"):
     status = st.info("Searching flights...")
-    results = search_multiple_origins(origins, "BCN", str(date))
+    results = search_multiple_origins2(origins, "BCN", str(date))
 
     rows = []
     for r in results:
