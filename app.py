@@ -5,8 +5,12 @@ from datetime import time
 from config import origins, origin_info, airline_names
 import pickle
 
-with open("model.pkl", "rb") as f:
-    model = pickle.load(f)
+@st.cache_resource
+def load_model():
+    with open("model.pkl", "rb") as f:
+        return pickle.load(f)
+
+model = load_model()
 
 def highlight_cheapest(row):
     if row["is_cheapest"]:
