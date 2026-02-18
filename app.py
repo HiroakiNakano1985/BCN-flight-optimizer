@@ -3,17 +3,10 @@ from flight_api import search_multiple_origins
 import pandas as pd
 from datetime import time
 from config import origins, origin_info, airline_names
+import pickle
 
-def format_duration(iso_duration):
-    hours = 0
-    minutes = 0
-
-    if "H" in iso_duration:
-        hours = int(iso_duration.split("T")[1].split("H")[0])
-    if "M" in iso_duration:
-        minutes = int(iso_duration.split("H")[-1].replace("M", ""))
-
-    return f"{hours}:{minutes:02d}"
+with open("model.pkl", "rb") as f:
+    model = pickle.load(f)
 
 def highlight_cheapest(row):
     if row["is_cheapest"]:
@@ -57,7 +50,7 @@ h2, h3 {
 """, unsafe_allow_html=True)
 
 st.title("Barcelona Flight Optimizer")
-st.subheader("UC1: Search flights arriving in Barcelona")
+st.subheader("Search flights arriving in Barcelona")
 
 # date
 date = st.date_input("Arrival date")
@@ -126,13 +119,19 @@ if "df" in st.session_state:
     df["City"] = df["origin"].apply(lambda x: origin_info[x][0])
     df["Country"] = df["origin"].apply(lambda x: origin_info[x][1])
     df["AirlineName"] = df["airline"].apply(lambda x: airline_names.get(x, "Unknown"))
-    df["Duration"] = df["duration"].apply(format_duration)
-
-    
-
-    
     df["dep_time"] = pd.to_datetime(df["departure"]).dt.time
     df["arr_time"] = pd.to_datetime(df["arrival"]).dt.time
+    df["hours"] = df["duration"].str.extract(r"(\d+)H").fillna(0).astype(int)
+    df["minutes"] = df["duration"].str.extract(r"(\d+)M").fillna(0).astype(int)
+    df["duration(min)"] = df["hours"] * 60 + df["minutes"]
+    df["duration"] = df["hours"].astype(str) + ":" + df["minutes"].astype(str).str.zfill(2)
+
+    df = df.drop(columns=["hours", "minutes"])
+    df["departure_dt"] = pd.to_datetime(df["departure"])
+    df["dep_minutes"] = df["departure_dt"].dt.hour * 60 + df["departure_dt"].dt.minute
+    df["weekday"] = df["departure_dt"].dt.day_name()
+    df["route_weekday"] = df["origin"] + "_" + df["weekday"]
+
 
     filtered = df[
         (df["dep_time"] >= dep_start) &
@@ -147,7 +146,7 @@ if "df" in st.session_state:
     filtered = filtered[[
         "origin", "City", "Country",
         "airline", "AirlineName",
-        "price","dep_time", "arr_time", "Duration",
+        "price","dep_time", "arr_time", "duration",
         "is_cheapest"]]
 
 
@@ -177,3 +176,39 @@ if "df" in st.session_state:
     st.subheader("Average Price by City (Top 10 Cheapest)")
     st.bar_chart(avg_price["price"])
 
+    df_pred = df.copy()
+    df_pred["pred_price"] = model.predict(df_pred[["origin",
+                                                   "airline",
+                                                   "weekday",
+                                                   "route_weekday",
+                                                   "duration(min)",
+                                                   "dep_minutes"]])
+    
+    df_pred["diff"] = df_pred["pred_price"] - df_pred["price"]
+
+    
+    cheap = df_pred[df_pred["diff"] > 20].copy()
+    cheap["City"] = cheap["origin"].apply(lambda x: origin_info[x][0])
+    cheap["Country"] = cheap["origin"].apply(lambda x: origin_info[x][1])
+    cheap["AirlineName"] = cheap["airline"].apply(lambda x: airline_names.get(x, "Unknown"))
+    cheap["dep_time"] = pd.to_datetime(cheap["departure"]).dt.time
+    cheap["arr_time"] = pd.to_datetime(cheap["arrival"]).dt.time
+    cheap["diff"] = cheap["diff"].round(2)
+    cheap["pred_price"] = cheap["pred_price"].round(2)
+
+
+# filtered と同じ列順に並べる
+    cheap_display = cheap[["origin", "City", "Country",
+                           "airline", "AirlineName",
+                           "price", "pred_price", "diff",
+                           "dep_time", "arr_time", "duration"
+                           ]].sort_values("diff", ascending=False)
+
+
+
+    st.subheader("🔥 Flight Tickets cheaper than predicted by 20 EURs")
+
+    if len(cheap_display) == 0:
+        st.info("No significantly cheap flights found on selected date.")
+    else:
+        st.dataframe(cheap_display)

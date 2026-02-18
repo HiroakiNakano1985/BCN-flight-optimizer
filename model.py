@@ -3,6 +3,7 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from xgboost import XGBRegressor
+import pickle
 
 df = pd.read_csv("data/bcn_flight_dataset_preprocessed.csv")
 
@@ -37,14 +38,6 @@ steps = [("preprocess", preprocessor), ("model", model)]
 pipe = Pipeline(steps)
 
 pipe.fit(X,y)
+with open("model.pkl", "wb") as f:
+        pickle.dump(pipe, f)
 
-df["pred_price"] = pipe.predict(X)
-baseline = df[["origin",
-               "airline",
-               "weekday",
-               "duration(min)",
-               "dep_minutes",
-               "route_weekday",
-               "pred_price"]]
-
-baseline.to_csv("data/baseline_prices.csv", index = False)
