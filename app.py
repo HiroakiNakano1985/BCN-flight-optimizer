@@ -201,7 +201,6 @@ if "df" in st.session_state:
     cheap["pred_price"] = cheap["pred_price"].round(2)
 
 
-# filtered と同じ列順に並べる
     cheap_display = cheap[["origin", "City", "Country",
                            "airline", "AirlineName",
                            "price", "pred_price", "diff",
