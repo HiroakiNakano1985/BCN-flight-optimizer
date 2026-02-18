@@ -59,27 +59,6 @@ def search_flights(origin, destination, date):
 
     return response.json()
 
-def search_multiple_origins(origins, destination, date, max_workers=2):
-
-    def fetch(origin):
-        for attempt in range(3):  # max try 3 times
-            try:
-                time.sleep(1.2)  # to avoid "too many requests"
-                data = search_flights(origin, destination, date)
-                return {"origin": origin, "data": data}
-            except Exception as e:
-                if "429" in str(e):
-                    # in case of 429, take longer to avoid error
-                    time.sleep(2)
-                    continue
-                return {"origin": origin, "error": str(e)}
-        return {"origin": origin, "error": "Failed after retries"}
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = list(executor.map(fetch, origins))
-
-    return results
-
 LAST_CALL_TIME = 0
 
 def rate_limited_call(func, *args, min_interval=1.2, **kwargs):
@@ -94,7 +73,7 @@ def rate_limited_call(func, *args, min_interval=1.2, **kwargs):
     return func(*args, **kwargs)
 
 
-def search_multiple_origins2(origins, destination, date, max_workers=5):
+def search_multiple_origins(origins, destination, date, max_workers=5):
 
     def fetch(origin):
         for attempt in range(3):

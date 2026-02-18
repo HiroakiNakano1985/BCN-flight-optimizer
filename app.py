@@ -1,5 +1,5 @@
 import streamlit as st
-from flight_api import search_multiple_origins2
+from flight_api import search_multiple_origins
 import pandas as pd
 from datetime import time
 from config import origins, origin_info, airline_names
@@ -79,7 +79,7 @@ arr_start, arr_end = st.slider(
 
 if st.button("Search"):
     status = st.info("Searching flights...")
-    results = search_multiple_origins2(origins, "BCN", str(date))
+    results = search_multiple_origins(origins, "BCN", str(date))
 
     rows = []
     for r in results:
