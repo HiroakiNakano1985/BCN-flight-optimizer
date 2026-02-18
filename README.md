@@ -41,6 +41,8 @@ The app highlights flights that are **significantly cheaper than expected (20EUR
 - Pickle — Model serialization
 
 ### **Project Structure**
+
+```
 project/
 │
 ├── app.py                         # Streamlit web application
@@ -57,14 +59,15 @@ project/
 ├── config.py                      # API keys, city metadata, airline names
 │
 ├── data/                          # Datasets
-│   ├── bcn_flight_dataset_full.csv          # Raw merged dataset
-│   ├── bcn_flight_dataset_preprocessed.csv  # Final ML training dataset
+│   ├── bcn_flight_dataset_full.csv
+│   ├── bcn_flight_dataset_preprocessed.csv
 │   ├── bcn_flight_dataset_remaining.csv
 │   ├── bcn_flight_dataset_till_IST.csv
 │   ├── bcn_flight_dataset_till_PRG.csv
-│   └── baseline_prices.csv        # (Legacy file, no longer used)
+│   └── baseline_prices.csv        # (Legacy file)
 │
 └── README.md
+```
 
 ### **Future Improvements**
 - Adjustable threshold for “cheap flight” detection
@@ -73,5 +76,6 @@ project/
 - AI recommendation model for round-trip
 
 ### **Author**
-Hiroaki Nakano
-Barcelona-based developer, Japan Post Bank
+Hiroaki Nakano  
+MSc Business Analytics (2026) in ESADE  
+Japan Post Bank
