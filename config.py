@@ -1,10 +1,11 @@
-origins = [
-    "LIS", "CMN", "TUN", "CDG", "LON", "ZRH", "BRU", "AMS",
-    "BER", "PRG", "WAW", "VIE", "LJU", "FCO", "BUD", "ZAG",
-    "OTP", "SOF", "ATH", "IST", "NCE", "MAD"]
+origins = ["BCN", "LIS", "CMN", "TUN", "CDG", "LON", "ZRH",
+           "BRU", "AMS", "BER", "PRG", "WAW", "VIE", "LJU",
+           "FCO", "BUD", "ZAG", "OTP", "SOF", "ATH", "IST",
+           "NCE", "MAD"]
 
 
 origin_info = {
+    "BCN": ("Barcelona", "Spain"),
     "LIS": ("Lisbon", "Portugal"),
     "CMN": ("Casablanca", "Morocco"),
     "TUN": ("Tunis", "Tunisia"),
