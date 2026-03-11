@@ -1,101 +1,40 @@
 import os
+import json
 import requests
 from dotenv import load_dotenv
-from concurrent.futures import ThreadPoolExecutor
 import time
 
 load_dotenv()
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
 
-API_KEY = os.getenv("AMAD_CLIENT_ID")
-API_SECRET = os.getenv("AMAD_CLIENT_SECRET")
+URL = "https://google-flights-live-api.p.rapidapi.com/api/google_flights/oneway/v1"
 
-TOKEN_URL = "https://test.api.amadeus.com/v1/security/oauth2/token"
-SEARCH_URL = "https://test.api.amadeus.com/v2/shopping/flight-offers"
+HEADERS = {
+    "Content-Type": "application/json",
+    "x-rapidapi-key": RAPIDAPI_KEY,
+    "x-rapidapi-host": "google-flights-live-api.p.rapidapi.com"
+}
 
-ACCESS_TOKEN =None
-
-def get_access_token():
-    global ACCESS_TOKEN
-    if ACCESS_TOKEN is not None:
-        return ACCESS_TOKEN
-    data = {
-        "grant_type": "client_credentials",
-        "client_id": API_KEY,
-        "client_secret": API_SECRET
+def fetch_flights(origin, destination, date):
+    payload = {
+        "departure_date": date,
+        "from_airport": origin,
+        "to_airport": destination
     }
-    response = requests.post(TOKEN_URL, data=data)
+    response = requests.post(URL, headers=HEADERS, data=json.dumps(payload))
     response.raise_for_status()
-    ACCESS_TOKEN = response.json()["access_token"]
-    return ACCESS_TOKEN
+    raw = response.json()
+    return raw
 
 
-def search_flights(origin, destination, date):
-    
-    token = get_access_token()
-
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
-
-    params = {
-        "originLocationCode": origin,
-        "destinationLocationCode": destination,
-        "departureDate": date,
-        "adults": 1,
-        "max": 15
-    }
-
-    response = requests.get(SEARCH_URL, headers=headers, params=params)
-    response.raise_for_status()
-    data = response.json()
-
-    direct_offers = []
-    for offer in data["data"]:
-        segments = offer["itineraries"][0]["segments"]
-        if all(seg["numberOfStops"] == 0 for seg in segments):
-            direct_offers.append(offer)
-    data["data"] = direct_offers
-    return data
-
-    return response.json()
-
-LAST_CALL_TIME = 0
-
-def rate_limited_call(func, *args, min_interval=1.2, **kwargs):
-    global LAST_CALL_TIME
-    now = time.time()
-
-    wait = LAST_CALL_TIME + min_interval - now
-    if wait > 0:
-        time.sleep(wait)
-
-    LAST_CALL_TIME = time.time()
-    return func(*args, **kwargs)
-
-
-def search_multiple_origins(origins, destination, date, max_workers=5):
-
-    def fetch(origin):
-        for attempt in range(3):
-            try:
-                data = rate_limited_call(
-                    search_flights,
-                    origin,
-                    destination,
-                    date,
-                    min_interval=1.2
-                )
-                return {"origin": origin, "data": data}
-
-            except Exception as e:
-                if "429" in str(e):
-                    time.sleep(2)
-                    continue
-                return {"origin": origin, "error": str(e)}
-
-        return {"origin": origin, "error": "Failed after retries"}
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = list(executor.map(fetch, origins))
-
+def search_multiple_origins(origins, destination, date):
+    results = []
+    for origin in origins:
+        flights = fetch_flights(origin, destination, date)
+        results.append({
+            "origin": origin,
+            "destination": destination,
+            "data": flights
+        })
+        time.sleep(1.2)
     return results

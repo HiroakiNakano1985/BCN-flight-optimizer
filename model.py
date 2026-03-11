@@ -5,24 +5,24 @@ from sklearn.pipeline import Pipeline
 from xgboost import XGBRegressor
 import pickle
 
-df = pd.read_csv("data/bcn_flight_dataset_preprocessed.csv")
-
-df = df.drop(columns =["error"])
+df = pd.read_csv("data/flights_preprocessed.csv")
 df = df.dropna()
-df["route_weekday"] = df["origin"] + "_" + df["weekday"]
+df["route_weekday"] = df["origin"] + "_" + df["destination"] + "_" + df["weekday"]
 
 
 X = df[["origin",
+        "destination",
         "airline",
         "weekday",
         "route_weekday",
-        "duration(min)",
+        "duration_min",
         "dep_minutes"]]
 
 y = df["price"]
 
 categorical_cols = ["origin", "airline", "weekday", "route_weekday"]
-numeric_cols = ["duration(min)", "dep_minutes"]
+numeric_cols = ["duration_min", "dep_minutes"]
+
 
 categorical_transformer = OneHotEncoder(sparse_output=False)
 preprocessor = ColumnTransformer(transformers=[("cat", categorical_transformer, categorical_cols),

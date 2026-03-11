@@ -1,9 +1,10 @@
 import streamlit as st
 from flight_api import search_multiple_origins
 import pandas as pd
-from datetime import time
+from datetime import time, datetime
 from config import origins, origin_info, airline_names
 import pickle
+
 
 @st.cache_resource
 def load_model():
@@ -16,6 +17,24 @@ def highlight_cheapest(row):
     if row["is_cheapest"]:
         return ["background-color: #d1ffd1"] * len(row)
     return [""] * len(row)
+
+def parse_gf_datetime(text):
+    # "7:00 AM on Thu, Mar 12" → "7:00 AM Thu Mar 12 2026"
+    text = text.replace(" on ", " ")
+    text = text + " 2026"
+
+    return datetime.strptime(text, "%I:%M %p %a, %b %d %Y")
+
+
+def normalize_airline(name: str) -> str:
+    if not name:
+        return None
+    name = name.replace("|", ",")
+    first = name.split(",")[0].strip()
+    if "Operated by" in first:
+        first = first.split("Operated by")[0].strip()
+    return first
+
 
 st.set_page_config(
     page_title="Cheap Flight Explorer",
@@ -53,41 +72,6 @@ h2, h3 {
 </style>
 """, unsafe_allow_html=True)
 
-if "df" in st.session_state:
-    df = st.session_state["df"].copy()
-
-    df["City"] = df["origin"].apply(lambda x: origin_info[x][0])
-    df["Country"] = df["origin"].apply(lambda x: origin_info[x][1])
-    df["AirlineName"] = df["airline"].apply(lambda x: airline_names.get(x, "Unknown"))
-    df["dep_time"] = pd.to_datetime(df["departure"]).dt.time
-    df["arr_time"] = pd.to_datetime(df["arrival"]).dt.time
-    df["hours"] = df["duration"].str.extract(r"(\d+)H").fillna(0).astype(int)
-    df["minutes"] = df["duration"].str.extract(r"(\d+)M").fillna(0).astype(int)
-    df["duration(min)"] = df["hours"] * 60 + df["minutes"]
-    df["duration"] = df["hours"].astype(str) + ":" + df["minutes"].astype(str).str.zfill(2)
-
-    df = df.drop(columns=["hours", "minutes"])
-    df["departure_dt"] = pd.to_datetime(df["departure"])
-    df["dep_minutes"] = df["departure_dt"].dt.hour * 60 + df["departure_dt"].dt.minute
-    df["weekday"] = df["departure_dt"].dt.day_name()
-    df["route_weekday"] = df["origin"] + "_" + df["weekday"]
-
-    df_pred = df.copy()
-    df_pred["pred_price"] = model.predict(df_pred[[
-        "origin", "airline", "weekday", "route_weekday", "duration(min)", "dep_minutes"
-    ]])
-    df_pred["diff"] = df_pred["pred_price"] - df_pred["price"]
-
-    cheap_display = df_pred.copy()
-    cheap_display["City"] = cheap_display["origin"].apply(lambda x: origin_info[x][0])
-    cheap_display["Country"] = cheap_display["origin"].apply(lambda x: origin_info[x][1])
-    cheap_display["AirlineName"] = cheap_display["airline"].apply(lambda x: airline_names.get(x, "Unknown"))
-    cheap_display["dep_time"] = pd.to_datetime(cheap_display["departure"]).dt.time
-    cheap_display["arr_time"] = pd.to_datetime(cheap_display["arrival"]).dt.time
-    cheap_display["diff"] = cheap_display["diff"].round(2)
-    cheap_display["pred_price"] = cheap_display["pred_price"].round(2)
-
-
 tab1, tab2, tab3 = st.tabs(["Flight Search", "Cheap Deals", "Chatbot"])
 
 with tab1:
@@ -118,11 +102,12 @@ with tab1:
 
     if st.button("Search"):
         status = st.info("Searching flights...")
+
         if origin_choice == "Any":
             origin_list = origins
         else:
             origin_list = [origin_choice]
-        
+
         if destination_choice == "Any":
             destination_list = origins
         else:
@@ -131,12 +116,10 @@ with tab1:
         results = []
 
         for dest in destination_list:
-
             valid_origins = [o for o in origin_list if o != dest]
-
-            if len(valid_origins) ==0:
+            if len(valid_origins) == 0:
                 continue
-            results.extend(search_multiple_origins(origin_list, dest, str(date)))
+            results.extend(search_multiple_origins(valid_origins, dest, str(date)))
 
         rows = []
 
@@ -157,31 +140,44 @@ with tab1:
                 })
                 continue
 
-            offers = r["data"]["data"]
 
-            for offer in offers:
-                segments = offer["itineraries"][0]["segments"]
-                if len(segments) !=1:
-                    continue
-                seg = segments[0]
+            offers = r
+
+            for offer in offers["data"]:
                 rows.append({
                     "origin": origin,
                     "destination": destination,
-                    "price": float(offer["price"]["grandTotal"]),
-                    "airline": offer["validatingAirlineCodes"][0],
-                    "duration": offer["itineraries"][0]["duration"],
-                    "departure": seg["departure"]["at"],
-                    "arrival": seg["arrival"]["at"],
+                    "price": offer["price_as_number"],
+                    "airline": offer["airline"],
+                    "duration": offer["duration_seconds"],
+                    "departure_time": offer["departure_description"],
+                    "arrival_time": offer["arrival_description"],
                     "error": None
                 })
 
-        
-        st.session_state["df"] = pd.DataFrame(rows)
+        df = pd.DataFrame(rows)
+        df["City"] = df["destination"].apply(lambda x: origin_info[x][0])
+        df["Country"] = df["destination"].apply(lambda x: origin_info[x][1])
+        df["airline"] = df["airline"].apply(normalize_airline)        
+        df["AirlineName"] = df["airline"].apply(lambda x: airline_names.get(x, "Unknown"))
+        df["departure_dt"] = df["departure_time"].apply(parse_gf_datetime)
+        df["arrival_dt"] = df["arrival_time"].apply(parse_gf_datetime)
+
+        df["dep_date"] = df["departure_dt"].dt.date.astype(str)
+        df["dep_time"] = df["departure_dt"].dt.time
+        df["dep_minutes"] = df["departure_dt"].dt.hour * 60 + df["departure_dt"].dt.minute
+
+        df["arr_date"] = df["arrival_dt"].dt.date.astype(str)
+        df["arr_time"] = df["arrival_dt"].dt.time
+        df["arr_minutes"] = df["arrival_dt"].dt.hour * 60 + df["arrival_dt"].dt.minute
+
+        df["weekday"] = df["departure_dt"].dt.day_name()
+        df["duration_min"] = df["duration"] / 60
+
+        df = df.drop(columns=["departure_time", "arrival_time"])
+        st.session_state["df"] = df
         status.empty()
         st.success("Search completed!")
-
-    if "df" in st.session_state:
-        df = st.session_state["df"]
 
         filtered = df[
             (df["dep_time"] >= dep_start) &
@@ -196,10 +192,7 @@ with tab1:
 
         filtered = filtered[[
             "origin", "destination", "City", "Country",
-            "airline", "AirlineName",
-            "price", "dep_time", "arr_time", "duration",
-            "is_cheapest"
-        ]]
+            "AirlineName", "price", "dep_time", "arr_time", "duration", "is_cheapest"]]
         filtered["route"] = filtered["origin"] + " -> " + filtered["destination"]
 
         st.subheader("Filtered Results")
@@ -223,22 +216,79 @@ with tab1:
 
 with tab2:
     st.subheader("🔥 Flight Tickets cheaper than predicted")
+
     if "df" not in st.session_state:
-        st.info("Please search flights first")
+        st.info("Please run a search first.")
     else:
+        df = st.session_state["df"].copy()
         threshold = st.slider(
-            "How much cheaper than predicted?",
-            min_value = 5,
-            max_value = 100,
-            value = 20,
-            step = 5
+            "Show flights cheaper than predicted by at least this amount (EUR)",
+            min_value=0,
+            max_value=200,
+            value=20,
+            step=5
         )
-        cheap = df_pred[df_pred["diff"] > threshold]
+
+
+
+        df_pred = df.copy()
+        df_pred["route_weekday"] = df["origin"] + "_" + df["destination"] + "_" + df["weekday"] 
+        df_pred["pred_price"] = model.predict(df_pred[[
+            "origin",
+            "destination",
+            "airline",
+            "weekday",
+            "route_weekday",
+            "duration_min",
+            "dep_minutes"
+        ]])
+
+
+
+        df_pred["diff"] = df_pred["pred_price"] - df_pred["price"]
+
+        cheap = df_pred[df_pred["diff"] > threshold].copy()
+
+        cheap["City"] = cheap["origin"].apply(lambda x: origin_info[x][0])
+        cheap["Country"] = cheap["origin"].apply(lambda x: origin_info[x][1])
+        cheap["AirlineName"] = cheap["airline"].apply(lambda x: airline_names.get(x, "Unknown"))
+
+        cheap["diff"] = cheap["diff"].round(2)
+        cheap["pred_price"] = cheap["pred_price"].round(2)
+
+        cheap_display = cheap[[
+            "origin", "destination","City", "Country",
+            "airline","dep_time", "arr_time",
+            "price", "pred_price", "diff"
+            ]].sort_values("diff", ascending=False)
+
+        st.subheader("🔥 Flight Tickets cheaper than predicted by threshold")
 
         if len(cheap_display) == 0:
             st.info("No significantly cheap flights found on selected date.")
         else:
             st.dataframe(cheap_display)
+
+st.markdown("""
+<style>
+/* Tab3 専用の CSS */
+[data-testid="stChatInput"] > div {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    background: white !important;
+    padding: 12px !important;
+    z-index: 99999 !important;
+    border-top: 1px solid #ddd !important;
+}
+
+[data-testid="stMainBlockContainer"] {
+    padding-bottom: 140px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 
 with tab3:
@@ -247,8 +297,8 @@ with tab3:
     if "messages" not in st.session_state:
         st.session_state["messages"] = []
     
-    if "pending_user_input" not in st.session_state:
-        st.session_state["pending_user_input"] = None
+    if "pending" not in st.session_state:
+        st.session_state["pending"] = None
 
     for msg in st.session_state["messages"]:
         with st.chat_message(msg["role"]):
@@ -256,20 +306,20 @@ with tab3:
     
     user_input = st.chat_input("please input your request")
     if user_input:
-        st.session_state["pending_user_input"] = user_input
+        st.session_state["pending"] = user_input
         st.rerun()
 
-    if st.session_state["pending_user_input"] is not None:
-        user_text = st.session_state["pending_user_input"]
+    if st.session_state["pending"] is not None:
+            text = st.session_state["pending"]
 
-        st.session_state["messages"].append(
-            {"role": "user", "content": user_text}
-        )
+            st.session_state["messages"].append(
+                {"role": "user", "content": text}
+            )
 
-        bot_reply = f"You said: {user_text}"
-        st.session_state["messages"].append(
-            {"role": "assistant", "content": bot_reply}
-        )
+            bot_reply = f"You said: {text}"
+            st.session_state["messages"].append(
+                {"role": "assistant", "content": bot_reply}
+            )
 
-        st.session_state["pending_user_input"] = None
-        st.rerun()
+            st.session_state["pending"] = None
+            st.rerun()
