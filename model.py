@@ -14,7 +14,7 @@ X = df[["origin",
         "destination",
         "airline",
         "weekday",
-        "route_weekday",
+        "route_weekday",\
         "duration_min",
         "dep_minutes"]]
 
