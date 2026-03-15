@@ -249,8 +249,8 @@ with tab2:
 
         cheap = df_pred[df_pred["diff"] > threshold].copy()
 
-        cheap["City"] = cheap["origin"].apply(lambda x: origin_info[x][0])
-        cheap["Country"] = cheap["origin"].apply(lambda x: origin_info[x][1])
+        cheap["City"] = cheap["destination"].apply(lambda x: origin_info[x][0])
+        cheap["Country"] = cheap["destination"].apply(lambda x: origin_info[x][1])
         cheap["AirlineName"] = cheap["airline"].apply(lambda x: airline_names.get(x, "Unknown"))
 
         cheap["diff"] = cheap["diff"].round(2)
@@ -271,7 +271,7 @@ with tab2:
 
 st.markdown("""
 <style>
-/* Tab3 専用の CSS */
+/* CSS for tab3 */
 [data-testid="stChatInput"] > div {
     position: fixed !important;
     bottom: 0 !important;
@@ -289,38 +289,80 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-import cohere
+from google.genai import Client
 import json
+import re
+import dateparser
+import datetime
 
-co = cohere.Client(st.secrets["COHERE_API_KEY"])
+client = Client(api_key=st.secrets["GEMINI_API_KEY"])
+# Force all dates to be in 2026
+def fix_year(date_str):
+    try:
+        dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+        dt = dt.replace(year=2026)
+        return dt.strftime("%Y-%m-%d")
+    except:
+        return date_str
+
+
 
 def parse_user_input(text):
     prompt = f"""
-    Convert the user's message into the following JSON format:
+    You are an information extraction system.
+    Extract travel information from the user message and output ONLY a JSON object:
 
     {{
-        "origin": "Departure airport code (e.g., 'BCN', 'LDN')",
-        "start_date": "YYYY-MM-DD",
-        "end_date": "YYYY-MM-DD"
+    "origin": "IATA airport code or null",
+    "start_date": "YYYY-MM-DD or null",
+    "end_date": "YYYY-MM-DD or null"
     }}
+
+    Rules:
+    - Convert city names to IATA codes (Barcelona → BCN).
+    - When the user mentions a city with multiple airports (e.g., London), ALWAYS return the city-level IATA code:
+        - London → LON
+    - Accept ANY date format, including incomplete or shorthand formats.
+    - Accept inputs with punctuation, typos, or separators like ';' or ':'.
+    - If the user mentions only an end date (e.g. "end date 30 Mar"), set end_date.
+    - If information is missing, return null for that field.
+    - ALWAYS return valid JSON. Never output explanations.
 
     User message: {text}
     """
 
-    response = co.generate(
-        model="command-r-plus",
-        prompt=prompt,
-        max_tokens=200,
-        temperature=0
+    response = client.models.generate_content(
+        model="models/gemini-2.5-flash",
+        contents=prompt
     )
 
-    return json.loads(response.generations[0].text)
+    raw = response.text.strip()
 
+    # extracting json
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not match:
+        return {"origin": None, "start_date": None, "end_date": None, "num_cities": 2}
+
+    json_str = match.group(0)
+
+    try:
+        data = json.loads(json_str)
+    except:
+        json_str = re.sub(r",\s*}", "}", json_str)
+        json_str = re.sub(r",\s*\]", "]", json_str)
+        try:
+            data = json.loads(json_str)
+        except:
+            return {"origin": None, "start_date": None, "end_date": None, "num_cities": 2}
+    data["num_cities"] = 2
+    return data
 
 with tab3:
-    st.subheader("Chatbot")
+    st.subheader("Route Recoomendation Chatbot")
 
-    # initial messages
+    # -----------------------------
+    # 1. Initialize session states
+    # -----------------------------
     if "messages" not in st.session_state:
         st.session_state["messages"] = [
             {
@@ -332,78 +374,203 @@ with tab3:
     if "pending" not in st.session_state:
         st.session_state["pending"] = None
 
-    # show past messages
+    if "travel_info" not in st.session_state:
+        st.session_state["travel_info"] = {
+            "origin": None,
+            "start_date": None,
+            "end_date": None
+        }
+
+    if "pending_step" not in st.session_state:
+        st.session_state["pending_step"] = "parse"
+
     for msg in st.session_state["messages"]:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
-    # user input
+    # -----------------------------
+    # 2. User input
+    # -----------------------------
     user_input = st.chat_input("please input your request")
     if user_input:
         st.session_state["pending"] = user_input
         st.rerun()
 
-    if st.session_state["pending"] is not None:
+    # -----------------------------
+    # 3. Process pending message
+    # -----------------------------
+
+    # --- STEP 1: Parse user input ---
+    if st.session_state["pending"] is not None and st.session_state["pending_step"] == "parse":
         text = st.session_state["pending"]
 
-        # add user message
-        st.session_state["messages"].append(
-            {"role": "user", "content": text}
-        )
+        # Add user message
+        st.session_state["messages"].append({"role": "user", "content": text})
 
-        # parse with cohere
         try:
+            # ---- Parse user input ----
             parsed = parse_user_input(text)
+            info = st.session_state["travel_info"]
 
-            # check missing fields
-            missing = []
-            for key in ["origin", "start_date", "end_date"]:
-                if key not in parsed or parsed[key] in [None, "", "null"]:
-                    missing.append(key)
+            if parsed.get("origin"):
+                info["origin"] = parsed["origin"]
+            if parsed.get("start_date"):
+                info["start_date"] = fix_year(parsed["start_date"])
+            if parsed.get("end_date"):
+                info["end_date"] = fix_year(parsed["end_date"])
 
+            # ---- Fallback date parsing ----
+            for key in ["start_date", "end_date"]:
+                if info[key] is None:
+                    m = re.search(r"(\d{1,2}\s*[A-Za-z]{3,9})", text)
+                    if m:
+                        try:
+                            dt = dateparser.parse(
+                                m.group(1),
+                                settings={"RELATIVE_BASE": datetime.datetime(2026, 3, 15)}
+                            )
+                            info[key] = dt.strftime("%Y-%m-%d")
+                        except:
+                            pass
+
+            # ---- Missing info check ----
+            missing = [k for k, v in info.items() if v is None]
             if missing:
-                question = "I still need the following information: " + ", ".join(missing)
-                st.session_state["messages"].append({"role": "assistant", "content": question})
+                st.session_state["messages"].append(
+                    {"role": "assistant", "content": "I still need: " + ", ".join(missing)}
+                )
                 st.session_state["pending"] = None
+                st.session_state["pending_step"] = "parse"
                 st.rerun()
 
-        except Exception:
-            bot_reply = "Sorry, I couldn't understand your input. Please try again."
+            # ---- Parsing finished → show intermediate message ----
             st.session_state["messages"].append(
-                {"role": "assistant", "content": bot_reply}
+                {
+                    "role": "assistant",
+                    "content": f"Great! Here is your info: {info}\n\nSearching for the best routes using our machine learning model..."
+                }
             )
+
+            # Move to next step
+            st.session_state["pending_step"] = "search"
+            st.rerun()
+
+        except Exception as e:
+            st.session_state["messages"].append(
+                {"role": "assistant", "content": "Sorry, I couldn't understand your input."}
+            )
+            st.session_state["last_error"] = str(e)
+            st.session_state["pending"] = None
+            st.session_state["pending_step"] = "parse"
+            st.rerun()
+
+
+    # --- STEP 2: Run ML ---
+    if st.session_state["pending_step"] == "search":
+        try:
+            info = st.session_state["travel_info"]
+
+            from chatbot_prediction import find_best_routes
+            best_routes = find_best_routes(info)
+
+            st.session_state["temp_best_routes"] = best_routes
+
+            st.session_state["messages"].append(
+                {
+                    "role": "assistant",
+                    "content": "Found the top route candidates!\n\nFetching real flight prices from live APIs..."
+                }
+            )
+
+            st.session_state["pending_step"] = "api_search"
+            st.rerun()
+
+        except Exception as e:
+            st.session_state["messages"].append(
+                {"role": "assistant", "content": "Sorry, something went wrong during ML prediction."}
+            )
+            st.session_state["last_error"] = str(e)
+            st.session_state["pending_step"] = "parse"
             st.session_state["pending"] = None
             st.rerun()
 
-        # ML: get top 5 predicted routes
-        from chatbot_prediction import find_best_routes
-        best_routes = find_best_routes(parsed)
+    # --- STEP 3: API search ---
+    if st.session_state["pending_step"] == "api_search":
+            try:
+                from flight_api import search_multiple_legs
 
-        # API: get real prices
-        from flight_api import search_multiple_legs
+                best_routes = st.session_state["temp_best_routes"]
+                real_results = []
+                for route in best_routes:
+                    legs = route["legs"]
+                    real_price = search_multiple_legs(legs)
 
-        real_results = []
-        for route in best_routes:
-            legs = route["legs"]
-            real_price = search_multiple_legs(legs)
-            real_results.append({
-                "legs": legs,
-                "predicted_price": route["predicted_price"],
-                "real_price": real_price["total_price"],
-                "details": real_price["details"]
-            })
+                    real_results.append({
+                        "legs": legs,
+                        "predicted_price": route.get("predicted_price"),
+                        "real_price": real_price["total_price"],
+                        "details": real_price["details"]
+                    })
 
-        # sort by real price
-        real_results_sorted = sorted(real_results, key=lambda x: x["real_price"])
+                st.session_state["real_results"] = sorted(real_results, key=lambda x: x["real_price"])
 
-        # reply with cheapest 3
-        reply = "Here are the cheapest routes:\n\n"
-        for r in real_results_sorted[:3]:
-            reply += f"- Route: {r['legs']}\n  Predicted: {r['predicted_price']} EUR\n  Real: {r['real_price']} EUR\n\n"
+                st.session_state["messages"].append(
+                    {"role": "assistant", "content": "Search completed! Here are your best routes below."}
+                )
 
-        st.session_state["messages"].append(
-            {"role": "assistant", "content": reply}
-        )
+                st.session_state["pending_step"] = "parse"
+                st.session_state["pending"] = None
+                st.rerun()
 
-        st.session_state["pending"] = None
-        st.rerun()
+
+            except Exception as e:
+                st.session_state["messages"].append(
+                    {"role": "assistant", "content": "Sorry, something went wrong during route search."}
+                )
+                st.session_state["last_error"] = str(e)
+                st.session_state["pending_step"] = "parse"
+                st.rerun()
+
+    # -----------------------------
+    # 5. Route cards
+    # -----------------------------
+
+
+    if "real_results" in st.session_state:
+        st.markdown("## ✈️ Best Route Options")
+
+        for i, r in enumerate(st.session_state["real_results"]):
+            st.markdown(f"### 🛫 Route {i+1}")
+
+            details_list = r.get("details", [])
+            first_detail = details_list[0] if details_list else {}
+            flights = first_detail.get("flights", [])
+            first_flight = flights[0] if flights else {}
+
+            dep_desc = first_flight.get("departure_description", "")
+            arr_desc = first_flight.get("arrival_description", "")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Real Price", f"{r['real_price']} EUR")
+            with col2:
+                st.metric("Predicted Price", f"{r['predicted_price']:.2f} EUR")
+
+            st.markdown("#### Flight Legs")
+            for idx, leg in enumerate(r["legs"]):
+
+                detail = details_list[idx] if idx < len(details_list) else {}
+                flights = detail.get("flights", [])
+                
+                flight = flights[0] if flights else {}
+
+                dep_desc = flight.get("departure_description", "N/A")
+                arr_desc = flight.get("arrival_description", "N/A")
+
+                st.write(
+                    f"- **{leg['origin']} → {leg['destination']}** "
+                    f"({leg['date']} | {dep_desc} → {arr_desc})"
+                )
+
+
+            st.markdown("---")

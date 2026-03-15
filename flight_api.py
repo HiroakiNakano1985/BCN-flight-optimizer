@@ -24,6 +24,7 @@ def fetch_flights(origin, destination, date):
     response = requests.post(URL, headers=HEADERS, data=json.dumps(payload))
     response.raise_for_status()
     raw = response.json()
+
     return raw
 
 
@@ -49,10 +50,13 @@ def search_multiple_legs(legs):
         date = leg["date"]
 
         flights = fetch_flights(origin, destination, date)
+        
+        if isinstance(flights, list) and len(flights) > 0:
+            best_price = min(f["price_as_number"] for f in flights)
+        else:
+            best_price = None
 
-        # getting cheapest flight
-        best_price = flights["price_min"]
-        total_price += best_price
+        total_price += best_price if best_price is not None else 0
 
         detailed_results.append({
             "origin": origin,
