@@ -289,37 +289,121 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+import cohere
+import json
+
+co = cohere.Client(st.secrets["COHERE_API_KEY"])
+
+def parse_user_input(text):
+    prompt = f"""
+    Convert the user's message into the following JSON format:
+
+    {{
+        "origin": "Departure airport code (e.g., 'BCN', 'LDN')",
+        "start_date": "YYYY-MM-DD",
+        "end_date": "YYYY-MM-DD"
+    }}
+
+    User message: {text}
+    """
+
+    response = co.generate(
+        model="command-r-plus",
+        prompt=prompt,
+        max_tokens=200,
+        temperature=0
+    )
+
+    return json.loads(response.generations[0].text)
 
 
 with tab3:
     st.subheader("Chatbot")
 
+    # initial messages
     if "messages" not in st.session_state:
-        st.session_state["messages"] = []
-    
+        st.session_state["messages"] = [
+            {
+                "role": "assistant",
+                "content": "Hi! We recommend cheap multi-city flights for you.\nCould you provide the origin and travel dates?"
+            }
+        ]
+
     if "pending" not in st.session_state:
         st.session_state["pending"] = None
 
+    # show past messages
     for msg in st.session_state["messages"]:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
-    
+
+    # user input
     user_input = st.chat_input("please input your request")
     if user_input:
         st.session_state["pending"] = user_input
         st.rerun()
 
     if st.session_state["pending"] is not None:
-            text = st.session_state["pending"]
+        text = st.session_state["pending"]
 
-            st.session_state["messages"].append(
-                {"role": "user", "content": text}
-            )
+        # add user message
+        st.session_state["messages"].append(
+            {"role": "user", "content": text}
+        )
 
-            bot_reply = f"You said: {text}"
+        # parse with cohere
+        try:
+            parsed = parse_user_input(text)
+
+            # check missing fields
+            missing = []
+            for key in ["origin", "start_date", "end_date"]:
+                if key not in parsed or parsed[key] in [None, "", "null"]:
+                    missing.append(key)
+
+            if missing:
+                question = "I still need the following information: " + ", ".join(missing)
+                st.session_state["messages"].append({"role": "assistant", "content": question})
+                st.session_state["pending"] = None
+                st.rerun()
+
+        except Exception:
+            bot_reply = "Sorry, I couldn't understand your input. Please try again."
             st.session_state["messages"].append(
                 {"role": "assistant", "content": bot_reply}
             )
-
             st.session_state["pending"] = None
             st.rerun()
+
+        # ML: get top 5 predicted routes
+        from chatbot_prediction import find_best_routes
+        best_routes = find_best_routes(parsed)
+
+        # API: get real prices
+        from flight_api import search_multiple_legs
+
+        real_results = []
+        for route in best_routes:
+            legs = route["legs"]
+            real_price = search_multiple_legs(legs)
+            real_results.append({
+                "legs": legs,
+                "predicted_price": route["predicted_price"],
+                "real_price": real_price["total_price"],
+                "details": real_price["details"]
+            })
+
+        # sort by real price
+        real_results_sorted = sorted(real_results, key=lambda x: x["real_price"])
+
+        # reply with cheapest 3
+        reply = "Here are the cheapest routes:\n\n"
+        for r in real_results_sorted[:3]:
+            reply += f"- Route: {r['legs']}\n  Predicted: {r['predicted_price']} EUR\n  Real: {r['real_price']} EUR\n\n"
+
+        st.session_state["messages"].append(
+            {"role": "assistant", "content": reply}
+        )
+
+        st.session_state["pending"] = None
+        st.rerun()

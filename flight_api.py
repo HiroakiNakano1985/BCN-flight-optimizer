@@ -38,3 +38,33 @@ def search_multiple_origins(origins, destination, date):
         })
         time.sleep(1.2)
     return results
+
+def search_multiple_legs(legs):
+    total_price = 0
+    detailed_results = []
+
+    for leg in legs:
+        origin = leg["origin"]
+        destination = leg["destination"]
+        date = leg["date"]
+
+        flights = fetch_flights(origin, destination, date)
+
+        # getting cheapest flight
+        best_price = flights["price_min"]
+        total_price += best_price
+
+        detailed_results.append({
+            "origin": origin,
+            "destination": destination,
+            "date": date,
+            "best_price": best_price,
+            "flights": flights
+        })
+
+        time.sleep(1.2)
+
+    return {
+        "total_price": total_price,
+        "details": detailed_results
+    }

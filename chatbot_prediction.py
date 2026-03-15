@@ -2,8 +2,6 @@ import json
 import pandas as pd
 import joblib
 from datetime import datetime, timedelta
-import itertools
-import sys
 
 route_stats = pd.read_parquet("data/route_stats.parquet")
 airline_stats = pd.read_parquet("data/airline_stats.parquet")
@@ -61,65 +59,69 @@ def predict_route_price(df_features):
     preds = model.predict(df_features)
     return preds.sum()
 
-test_response = {"origin": "BCN", "start_date": "2026-03-20",
-                 "end_date": "2026-03-30","num_cities": 2}
+#test_response = {"origin": "BCN", "start_date": "2026-03-20",
+#                 "end_date": "2026-03-30","num_cities": 2}
 
-params = test_response
-
-origin = params["origin"]
-start_date = pd.to_datetime(params["start_date"])
-end_date = pd.to_datetime(params["end_date"])
-num_cities = params["num_cities"]
-
-total_days = (end_date - start_date).days
-
-avg_stay = int(total_days / (num_cities))
-min_stay = max(2, avg_stay - 1)
-max_stay = avg_stay + 1
-
-stay_range = range(min_stay, max_stay + 1)
+def find_best_routes(params):
 
 
+    origin = params["origin"]
+    start_date = pd.to_datetime(params["start_date"])
+    end_date = pd.to_datetime(params["end_date"])
+    num_cities = 2
 
-reachable_origin = airport_graph.loc[
-    airport_graph["origin"] == origin, "reachable_destinations"].iloc[0]
+    total_days = (end_date - start_date).days
 
-results = []
+    avg_stay = int(total_days / (num_cities))
+    min_stay = max(2, avg_stay - 1)
+    max_stay = avg_stay + 1
 
-
-for A in reachable_origin:
-
-    reachable_A = airport_graph.loc[
-        airport_graph["origin"] == A, "reachable_destinations"].iloc[0]
-
-    for B in reachable_A:
-
-        reachable_B = airport_graph.loc[
-            airport_graph["origin"] == B, "reachable_destinations"].iloc[0]
-
-        if origin not in reachable_B:
-            continue
-
-        for stayA in stay_range:
-            for stayB in stay_range:
-
-                dateA, dateB, dateReturn = generate_dates(start_date, stayA, stayB)
-
-                if dateReturn > end_date:
-                    continue
-
-                df_feat = build_route_features(origin, A, B, dateA, dateB, dateReturn)
-                score = predict_route_price(df_feat)
-
-                legs = [
-                        {"origin": origin, "destination": A, "date": dateA.date().isoformat()},
-                        {"origin": A, "destination": B, "date": dateB.date().isoformat()},
-                        {"origin": B, "destination": origin, "date": dateReturn.date().isoformat()}
-                        ]
-
-                results.append({"legs": legs,"predicted_price": float(score)})
+    stay_range = range(min_stay, max_stay + 1)
 
 
-results_sorted = sorted(results, key=lambda x: x["predicted_price"])
-best_routes = results_sorted[:5]
-print("best_routes", best_routes)
+
+    reachable_origin = airport_graph.loc[
+        airport_graph["origin"] == origin, "reachable_destinations"].iloc[0]
+
+    results = []
+
+
+    for A in reachable_origin:
+
+        reachable_A = airport_graph.loc[
+            airport_graph["origin"] == A, "reachable_destinations"].iloc[0]
+
+        for B in reachable_A:
+
+            reachable_B = airport_graph.loc[
+                airport_graph["origin"] == B, "reachable_destinations"].iloc[0]
+
+            if origin not in reachable_B:
+                continue
+
+            for stayA in stay_range:
+                for stayB in stay_range:
+
+                    dateA, dateB, dateReturn = generate_dates(start_date, stayA, stayB)
+
+                    if dateReturn > end_date:
+                        continue
+
+                    df_feat = build_route_features(origin, A, B, dateA, dateB, dateReturn)
+                    score = predict_route_price(df_feat)
+
+                    legs = [
+                            {"origin": origin, "destination": A, "date": dateA.date().isoformat()},
+                            {"origin": A, "destination": B, "date": dateB.date().isoformat()},
+                            {"origin": B, "destination": origin, "date": dateReturn.date().isoformat()}
+                            ]
+
+                    results.append({"legs": legs,"predicted_price": float(score)})
+
+
+    results_sorted = sorted(results, key=lambda x: x["predicted_price"])
+    return results_sorted[:5]
+
+if __name__ == "__main__":
+    test = {"origin": "BCN", "start_date": "2026-03-20", "end_date": "2026-03-30"}
+    print(find_best_routes(test))
