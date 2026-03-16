@@ -5,9 +5,10 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from config import origins as CONFIG_ORIGINS
+import streamlit as st
 
 load_dotenv()
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY") or st.secrets["RAPIDAPI_KEY"]
 
 DAYS = 30
 

@@ -2,10 +2,12 @@ import os
 import json
 import requests
 from dotenv import load_dotenv
+import streamlit as st
+
 import time
 
 load_dotenv()
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY") or st.secrets["RAPIDAPI_KEY"]
 
 URL = "https://google-flights-live-api.p.rapidapi.com/api/google_flights/oneway/v1"
 
