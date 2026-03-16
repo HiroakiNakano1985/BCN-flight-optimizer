@@ -120,7 +120,7 @@ project/
 │                                  # using the Google Flights Live API. Produces flights_bulk.csv.
 │
 ├── flight_api.py                  # Wrapper for Google Flights Live API (RapidAPI)
-├── config.py                      # API keys, city metadata, airline names, and app settings
+├── config.py                      # city metadata and airline names
 │
 ├── data/                          # Datasets used across the project
 │   ├── flights_bulk.csv           # Raw flight data collected from Google Flights API
@@ -134,6 +134,7 @@ project/
 ├── .streamlit/                    # Streamlit configuration (theme, secrets template, etc.)
 ├── .env                           # Environment variables (API keys)
 ├── .gitignore                     # Git ignore rules
+├── requirements.txt               # required modules text for streamlit.app
 └── README.md                      # Project documentation
 ```
 
