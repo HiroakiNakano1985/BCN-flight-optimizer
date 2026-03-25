@@ -1,5 +1,7 @@
 # ✈️ Cheap Flight Explorer
 
+https://hiroakinakano1985-bcn-flight-optimizer-app-rwh0za.streamlit.app/
+
 **Cheap Flight Explorer** is a Streamlit‑based web application that combines real‑time flight search, machine‑learning price prediction, and a multi‑city itinerary recommendation chatbot.
 
 Using the Google Flights Live API, the app retrieves up‑to‑date flight prices and compares them against a custom ML model’s predicted “fair price,” helping travelers instantly identify unusually cheap tickets and discover optimal multi‑city routes.
